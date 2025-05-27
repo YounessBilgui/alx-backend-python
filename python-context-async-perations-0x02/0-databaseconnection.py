@@ -17,4 +17,12 @@ class DatabaseConnection:
             self.cursor.close()
         if self.conn:
             self.conn.close()
+if __name__ == "__main__":
+    db_file = "example.db"  # Change this to your database file
+
+    with DatabaseConnection(db_file) as cursor:
+        cursor.execute("SELECT * FROM users")
+        results = cursor.fetchall()
+        for row in results:
+            print(row)
 
