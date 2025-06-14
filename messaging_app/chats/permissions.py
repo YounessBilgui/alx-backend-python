@@ -6,8 +6,9 @@ from chats.models import Conversation
 
 class IsOwnerOrReadOnly(BasePermission):
     def has_object_permission(self, request, view, obj):
-        if request.method in ['POST']: return True
-        return obj.sender.id == request.user.id
+        if request.method in ['POST', 'PUT', 'PATCH', 'DELETE']:
+            return obj.sender.id == request.user.id
+        return True
 
 
 class IsParticipant(BasePermission):
