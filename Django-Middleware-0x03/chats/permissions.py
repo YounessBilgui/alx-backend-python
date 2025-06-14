@@ -1,5 +1,5 @@
 from rest_framework.permissions import BasePermission
-
+from rest_framework import permissions
 from chats.models import Conversation
 
 
