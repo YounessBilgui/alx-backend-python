@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# Apply the updated blue deployment (triggers rolling update)
+kubectl apply -f blue_deployment.yaml
+
+# Monitor the rollout status
+kubectl rollout status deployment/messaging-app-blue &
+
+# Get the service ClusterIP and port (adjust if using NodePort/LoadBalancer)
+SERVICE_IP=$(kubectl get svc messaging-app-service -o jsonpath='{.spec.clusterIP}')
+SERVICE_PORT=$(kubectl get svc messaging-app-service -o jsonpath='{.spec.ports[0].port}')
+
+# Test for downtime: send requests in a loop (10 seconds)
+echo "Testing for downtime..."
+end=$((SECONDS+10))
+while [ $SECONDS -lt $end ]; do
+  curl -s http://$SERVICE_IP:$SERVICE_PORT/ > /dev/null && echo "OK" || echo "FAIL"
+  sleep 1
+done
+
+echo "Current pods:"
+kubectl get pods
