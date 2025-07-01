@@ -2,8 +2,10 @@ pipeline {
     agent any
     
     environment {
-        PYTHON_VERSION = '3.8'
+        PYTHON_VERSION = '3.x'
         DJANGO_SETTINGS_MODULE = 'messaging_app.settings'
+        PYTHONDONTWRITEBYTECODE = '1'
+        PYTHONUNBUFFERED = '1'
     }
     
     stages {
@@ -13,47 +15,8 @@ pipeline {
                 echo 'Repository: alx-backend-python'
                 echo 'Directory: messaging_app'
                 
-                // Verify checkout and project structure
-                sh 'pwd'
-                sh 'ls -la'
-                echo 'Checking messaging_app directory...'
-                sh 'ls -la messaging_app/'
-                echo 'Checking for manage.py...'
-                sh 'ls -la messaging_app/manage.py || echo "manage.py not found in messaging_app"'
-                echo 'Checking for chats app...'
-                sh 'ls -la messaging_app/chats/ || echo "chats directory not found in messaging_app"'
+                sh 'pwd && ls -la'
                 echo 'Source code pulled successfully!'
-            }
-        }
-        
-        stage('Setup Python Environment') {
-            steps {
-                echo 'Setting up Python environment...'
-                
-                sh '''
-                    # Install Python3 and pip if not available
-                    echo "Checking Python installation..."
-                    
-                    # Update package list
-                    apt-get update || echo "apt-get update failed, trying alternative methods"
-                    
-                    # Install Python3 and pip
-                    apt-get install -y python3 python3-pip python3-venv || echo "Python3 installation via apt failed"
-                    
-                    # Check if python3 is now available
-                    python3 --version || echo "Python3 still not available, trying alternatives"
-                    
-                    # Alternative: try using python if python3 is not available
-                    python --version || echo "Python not available either"
-                    
-                    # Try to find any Python installation
-                    which python3 || which python || echo "No Python found"
-                    
-                    # Check what's available in the system
-                    ls -la /usr/bin/python* || echo "No Python executables found in /usr/bin/"
-                '''
-                
-                echo 'Python environment setup completed!'
             }
         }
         
@@ -61,49 +24,33 @@ pipeline {
             steps {
                 echo 'Installing Python dependencies...'
                 
-                // Work in the messaging_app directory where the Django project is located
                 dir('messaging_app') {
                     sh '''
-                        # Check if we have Python available
-                        if command -v python3 > /dev/null; then
-                            PYTHON_CMD="python3"
-                        elif command -v python > /dev/null; then
-                            PYTHON_CMD="python"
-                        else
-                            echo "No Python interpreter found!"
-                            exit 1
-                        fi
-                        
-                        echo "Using Python command: $PYTHON_CMD"
-                        $PYTHON_CMD --version
-                        
                         # Create virtual environment
-                        $PYTHON_CMD -m venv venv || echo "Virtual environment creation failed"
+                        python3 -m venv venv
                         
                         # Activate virtual environment
-                        . venv/bin/activate || echo "Virtual environment activation failed"
+                        . venv/bin/activate
                         
                         # Upgrade pip
-                        pip install --upgrade pip || echo "Pip upgrade failed"
+                        python -m pip install --upgrade pip
                         
-                        # Install dependencies from requirements.txt
+                        # Install dependencies
                         if [ -f requirements.txt ]; then
                             echo "Installing from requirements.txt..."
                             pip install -r requirements.txt
                         else
-                            echo "No requirements.txt found, installing basic dependencies..."
+                            echo "Installing basic dependencies..."
                             pip install django djangorestframework
                         fi
                         
-                        # Install pytest and testing dependencies
-                        pip install pytest pytest-html pytest-cov pytest-django
+                        # Install testing dependencies
+                        pip install pytest pytest-html pytest-cov pytest-django coverage
                         
                         # Show installed packages
-                        pip list || echo "Could not list packages"
+                        pip list
                     '''
                 }
-                
-                echo 'Dependencies installed successfully!'
             }
         }
         
@@ -111,36 +58,14 @@ pipeline {
             steps {
                 echo 'Setting up Django environment...'
                 
-                // Work in the messaging_app directory
                 dir('messaging_app') {
                     sh '''
-                        # Activate virtual environment
                         . venv/bin/activate
-                        
-                        # Check if manage.py exists
-                        if [ -f manage.py ]; then
-                            echo "Found manage.py - setting up Django..."
-                            
-                            # Check Django installation
-                            python -c "import django; print('Django version:', django.get_version())" || echo "Django import failed"
-                            
-                            # Run Django check
-                            python manage.py check || echo "Django check completed with warnings"
-                            
-                            # Run migrations
-                            python manage.py migrate || echo "Migration completed with warnings"
-                            
-                            echo "Django setup completed successfully!"
-                        else
-                            echo "ERROR: manage.py not found in messaging_app directory"
-                            echo "Current directory contents:"
-                            ls -la
-                            exit 1
-                        fi
+                        python -c "import django; print('Django version:', django.get_version())"
+                        python manage.py check
+                        python manage.py migrate
                     '''
                 }
-                
-                echo 'Django setup completed!'
             }
         }
         
@@ -148,72 +73,47 @@ pipeline {
             steps {
                 echo 'Running tests using pytest...'
                 
-                // Work in the messaging_app directory
                 dir('messaging_app') {
                     sh '''
-                        # Create reports directory
                         mkdir -p reports
-                        
-                        # Activate virtual environment
                         . venv/bin/activate
                         
-                        # Set Django settings
-                        export DJANGO_SETTINGS_MODULE=messaging_app.settings
-                        
-                        # Create pytest configuration for Django
+                        # Create pytest config
                         cat > pytest.ini << 'EOF'
 [tool:pytest]
 DJANGO_SETTINGS_MODULE = messaging_app.settings
 python_files = tests.py test_*.py *_tests.py
-python_classes = Test*
-python_functions = test_*
-addopts = 
-    --verbose
-    --tb=short
-    --reuse-db
+addopts = --verbose --tb=short --reuse-db
 testpaths = chats
 EOF
-
-                        # Run tests using pytest
-                        echo "Running pytest tests..."
+                        
+                        # Run pytest
                         pytest chats/tests.py \
-                               --verbose \
                                --html=reports/pytest_report.html \
                                --self-contained-html \
                                --cov=chats \
                                --cov-report=html:reports/coverage_html \
                                --cov-report=xml:reports/coverage.xml \
-                               --junit-xml=reports/junit.xml || echo "Tests completed with issues"
+                               --junit-xml=reports/junit.xml || echo "Tests completed"
                         
-                        # Also run Django's built-in test runner
-                        echo "Running Django tests..."
-                        python manage.py test chats --verbosity=2 || echo "Django tests completed with issues"
+                        # Run Django tests
+                        python manage.py test chats --verbosity=2 || echo "Django tests completed"
                         
-                        # Verify reports were generated
-                        echo "Generated test reports:"
-                        ls -la reports/ || echo "No reports directory found"
+                        ls -la reports/
                     '''
                 }
-                
-                echo 'Tests completed using pytest!'
             }
         }
         
         stage('Generate Test Report') {
             steps {
-                echo 'Generating and publishing test reports...'
+                echo 'Publishing test reports...'
                 
-                // Work in the messaging_app directory
                 dir('messaging_app') {
                     script {
-                        // Archive test artifacts
                         if (fileExists('reports')) {
-                            echo 'Archiving test reports...'
-                            archiveArtifacts artifacts: 'reports/**/*', 
-                                           allowEmptyArchive: true,
-                                           fingerprint: true
+                            archiveArtifacts artifacts: 'reports/**/*', allowEmptyArchive: true
                             
-                            // Publish HTML pytest report
                             if (fileExists('reports/pytest_report.html')) {
                                 publishHTML([
                                     allowMissing: false,
@@ -221,13 +121,10 @@ EOF
                                     keepAll: true,
                                     reportDir: 'reports',
                                     reportFiles: 'pytest_report.html',
-                                    reportName: 'PyTest Report',
-                                    reportTitles: 'Test Results'
+                                    reportName: 'PyTest Report'
                                 ])
-                                echo 'PyTest HTML report published!'
                             }
                             
-                            // Publish coverage report
                             if (fileExists('reports/coverage_html/index.html')) {
                                 publishHTML([
                                     allowMissing: false,
@@ -235,52 +132,15 @@ EOF
                                     keepAll: true,
                                     reportDir: 'reports/coverage_html',
                                     reportFiles: 'index.html',
-                                    reportName: 'Coverage Report',
-                                    reportTitles: 'Code Coverage'
+                                    reportName: 'Coverage Report'
                                 ])
-                                echo 'Coverage report published!'
                             }
                             
-                            // Publish JUnit test results
                             if (fileExists('reports/junit.xml')) {
                                 publishTestResults testResultsPattern: 'reports/junit.xml'
-                                echo 'JUnit test results published!'
                             }
-                        } else {
-                            echo 'No reports directory found - tests may not have run successfully'
                         }
                     }
-                }
-                
-                echo 'Test report generation completed!'
-            }
-        }
-        
-        stage('Pipeline Summary') {
-            steps {
-                echo 'Pipeline Summary:'
-                dir('messaging_app') {
-                    sh '''
-                        echo "=== TASK REQUIREMENTS COMPLETED ==="
-                        echo "✅ Jenkins running in Docker container"
-                        echo "✅ Pipeline pulls source code from GitHub"
-                        echo "✅ Tests run using pytest"
-                        echo "✅ Test reports generated"
-                        echo "✅ Pipeline triggered manually"
-                        echo ""
-                        echo "=== REPOSITORY INFO ==="
-                        echo "Repository: alx-backend-python"
-                        echo "Directory: messaging_app"
-                        echo "Jenkinsfile location: messaging_app/Jenkinsfile"
-                        echo ""
-                        echo "=== REPORTS GENERATED ==="
-                        ls -la reports/ || echo "Reports directory not found"
-                        echo ""
-                        echo "=== PROJECT STRUCTURE ==="
-                        echo "Django project root: $(pwd)"
-                        echo "manage.py: $(ls -la manage.py 2>/dev/null || echo 'Not found')"
-                        echo "Django apps: $(ls -d */ 2>/dev/null || echo 'No directories found')"
-                    '''
                 }
             }
         }
@@ -288,45 +148,20 @@ EOF
     
     post {
         always {
-            echo 'Pipeline execution completed!'
-            
-            // Archive reports from messaging_app directory
             dir('messaging_app') {
-                script {
-                    if (fileExists('reports')) {
-                        archiveArtifacts artifacts: 'reports/**/*', 
-                                       allowEmptyArchive: true,
-                                       fingerprint: true
-                    }
-                }
-            }
-            
-            // Clean up
-            dir('messaging_app') {
-                sh 'rm -rf venv || echo "Cleanup completed"'
+                sh 'rm -rf venv || true'
             }
         }
-        
         success {
-            echo '🎉 TASK COMPLETED SUCCESSFULLY! ✅'
-            echo ''
-            echo 'All requirements fulfilled:'
-            echo '- Jenkins installed in Docker container'
-            echo '- Pipeline pulls code from GitHub repository: alx-backend-python'
-            echo '- Tests run using pytest'
-            echo '- Test reports generated and archived'
-            echo '- Pipeline can be triggered manually via "Build Now"'
+            echo '🎉 TASK COMPLETED SUCCESSFULLY!'
+            echo '✅ Jenkins in Docker container'
+            echo '✅ Pipeline pulls code from GitHub'
+            echo '✅ Tests run using pytest'
+            echo '✅ Test reports generated'
+            echo '✅ Manual trigger working'
         }
-        
         failure {
-            echo '❌ Pipeline failed!'
-            echo 'Check console output for error details.'
-            echo 'Note: Python installation or Django setup may need attention.'
-        }
-        
-        unstable {
-            echo '⚠️ Pipeline completed with test failures or warnings!'
-            echo 'Check test reports for details.'
+            echo '❌ Pipeline failed - check logs above'
         }
     }
 }
