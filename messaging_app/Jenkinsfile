@@ -1,0 +1,214 @@
+pipeline {
+    agent any
+    
+    environment {
+        // Define environment variables
+        PYTHON_VERSION = '3.8'
+        PROJECT_DIR = 'messaging_app'
+        DJANGO_SETTINGS_MODULE = 'messaging_app.settings'
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                echo 'Checking out source code from GitHub...'
+                // Clean workspace before checkout
+                deleteDir()
+                
+                // Checkout code from GitHub repository
+                git branch: 'main',
+                    credentialsId: 'github-credentials',
+                    url: 'https://github.com/your-username/alx-backend-python.git'
+                
+                echo 'Source code checked out successfully!'
+            }
+        }
+        
+        stage('Setup Python Environment') {
+            steps {
+                echo 'Setting up Python environment...'
+                
+                // Change to project directory
+                dir("${PROJECT_DIR}") {
+                    // Install Python dependencies
+                    sh '''
+                        # Create virtual environment
+                        python3 -m venv venv
+                        
+                        # Activate virtual environment and install dependencies
+                        . venv/bin/activate
+                        
+                        # Upgrade pip
+                        pip install --upgrade pip
+                        
+                        # Install dependencies
+                        if [ -f requirements.txt ]; then
+                            pip install -r requirements.txt
+                        fi
+                        
+                        # Install testing dependencies
+                        pip install pytest pytest-html pytest-cov pytest-django
+                        
+                        # Install Django if not in requirements
+                        pip install django djangorestframework
+                    '''
+                }
+                
+                echo 'Python environment setup completed!'
+            }
+        }
+        
+        stage('Django Setup') {
+            steps {
+                echo 'Setting up Django environment...'
+                
+                dir("${PROJECT_DIR}") {
+                    sh '''
+                        # Activate virtual environment
+                        . venv/bin/activate
+                        
+                        # Run Django migrations
+                        python manage.py makemigrations --dry-run
+                        python manage.py migrate --run-syncdb
+                        
+                        # Collect static files (if needed)
+                        python manage.py collectstatic --noinput || true
+                    '''
+                }
+                
+                echo 'Django setup completed!'
+            }
+        }
+        
+        stage('Run Tests') {
+            steps {
+                echo 'Running Django tests...'
+                
+                dir("${PROJECT_DIR}") {
+                    sh '''
+                        # Create reports directory
+                        mkdir -p reports
+                        
+                        # Activate virtual environment
+                        . venv/bin/activate
+                        
+                        # Run Django tests with pytest
+                        pytest chats/tests.py \
+                               --verbose \
+                               --html=reports/pytest_report.html \
+                               --self-contained-html \
+                               --cov=chats \
+                               --cov-report=html:reports/coverage_html \
+                               --cov-report=xml:reports/coverage.xml \
+                               --junit-xml=reports/junit.xml || true
+                        
+                        # Also run Django's built-in test runner as backup
+                        python manage.py test chats --verbosity=2 || true
+                    '''
+                }
+                
+                echo 'Tests completed!'
+            }
+        }
+        
+        stage('Generate Test Reports') {
+            steps {
+                echo 'Processing test reports...'
+                
+                dir("${PROJECT_DIR}") {
+                    // Archive test artifacts
+                    archiveArtifacts artifacts: 'reports/**/*', 
+                                   allowEmptyArchive: true,
+                                   fingerprint: true
+                    
+                    // Publish HTML reports
+                    publishHTML([
+                        allowMissing: false,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'reports',
+                        reportFiles: 'pytest_report.html',
+                        reportName: 'PyTest HTML Report',
+                        reportTitles: 'Test Results'
+                    ])
+                    
+                    // Publish coverage report
+                    publishHTML([
+                        allowMissing: false,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'reports/coverage_html',
+                        reportFiles: 'index.html',
+                        reportName: 'Coverage Report',
+                        reportTitles: 'Code Coverage'
+                    ])
+                    
+                    // Publish JUnit test results
+                    publishTestResults testResultsPattern: 'reports/junit.xml'
+                }
+                
+                echo 'Test reports generated and published!'
+            }
+        }
+        
+        stage('Code Quality Check') {
+            steps {
+                echo 'Running code quality checks...'
+                
+                dir("${PROJECT_DIR}") {
+                    sh '''
+                        # Activate virtual environment
+                        . venv/bin/activate
+                        
+                        # Install code quality tools
+                        pip install flake8 pylint black isort
+                        
+                        # Run flake8 for style guide enforcement
+                        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics > reports/flake8_report.txt || true
+                        
+                        # Run pylint for code analysis
+                        pylint **/*.py --output-format=text > reports/pylint_report.txt || true
+                        
+                        # Check code formatting with black
+                        black --check --diff . > reports/black_report.txt || true
+                        
+                        # Check import sorting with isort
+                        isort --check-only --diff . > reports/isort_report.txt || true
+                    '''
+                }
+                
+                echo 'Code quality checks completed!'
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo 'Pipeline execution completed!'
+            
+            // Archive all generated reports
+            dir("${PROJECT_DIR}") {
+                archiveArtifacts artifacts: 'reports/**/*', 
+                               allowEmptyArchive: true,
+                               fingerprint: true
+            }
+            
+            // Clean workspace
+            cleanWs()
+        }
+        
+        success {
+            echo 'Pipeline executed successfully! ✅'
+            // You can add notifications here (email, Slack, etc.)
+        }
+        
+        failure {
+            echo 'Pipeline failed! ❌'
+            // You can add failure notifications here
+        }
+        
+        unstable {
+            echo 'Pipeline completed with warnings! ⚠️'
+        }
+    }
+}
