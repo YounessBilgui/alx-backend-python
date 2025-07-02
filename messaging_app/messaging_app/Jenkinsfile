@@ -10,10 +10,10 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                echo 'Pulling source code from GitHub...'
+                // Checkout from GitHub with credentialsId and branch
+                git branch: 'main', credentialsId: 'github-credentials', url: 'https://github.com/YounessBilgui/alx-backend-python.git'
                 echo 'Repository: alx-backend-python'
                 echo 'Directory: messaging_app'
-                
                 sh 'pwd && ls -la'
                 echo 'Source code pulled successfully!'
             }
