@@ -22,33 +22,30 @@ pipeline {
         stage('Install Dependencies') {
             steps {
                 echo 'Installing Python dependencies...'
-                
                 dir('messaging_app') {
                     sh '''
                         # Create virtual environment
                         python3 -m venv venv
-                        
                         # Activate virtual environment
                         . venv/bin/activate
-                        
                         # Upgrade pip
                         python -m pip install --upgrade pip
-                        
-                        # Install dependencies from requirements.txt
-                        if [ -f requirements.txt ]; then
+                        # Install dependencies from messaging_app/requirements.txt
+                        if [ -f messaging_app/requirements.txt ]; then
+                            echo "Installing from messaging_app/requirements.txt..."
+                            pip3 install -r messaging_app/requirements.txt
+                        elif [ -f requirements.txt ]; then
                             echo "Installing from requirements.txt..."
-                            pip install -r requirements.txt
+                            pip3 install -r requirements.txt
                         else
                             echo "Installing basic dependencies..."
-                            pip install django djangorestframework
+                            pip3 install django djangorestframework
                         fi
-                        
                         # Install testing dependencies
-                        pip install pytest pytest-html pytest-cov pytest-django coverage
-                        
+                        pip3 install pytest pytest-html pytest-cov pytest-django coverage
                         # Show installed packages
                         echo "=== INSTALLED PACKAGES ==="
-                        pip list
+                        pip3 list
                     '''
                 }
                 
