@@ -12,11 +12,12 @@ class User(AbstractUser):
     last_name = models.CharField("Last Name", max_length=255)
     phone_number = models.CharField(max_length=15, blank=True, null=True)
     age = models.DateField(null=True)
+    # Remove custom groups and user_permissions fields to avoid clash with AbstractUser
 
 
 class Conversation(models.Model):
-    conversation_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     participants = models.ManyToManyField(User, related_name='conversations')
+    conversation_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     def __str__(self):
         return f"Conversation {self.conversation_id} with {self.participants.count()} participants"
