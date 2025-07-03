@@ -298,7 +298,7 @@ EOF
                             }
                             
                             if (fileExists('reports/junit.xml')) {
-                                publishTestResults testResultsPattern: 'reports/junit.xml'
+                                junit 'reports/junit.xml'
                             }
                         }
                     }
